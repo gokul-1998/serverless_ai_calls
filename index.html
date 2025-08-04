@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JSON to Quiz Converter with AI Explanations</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .option-btn {
+            transition: all 0.2s ease-in-out;
+        }
+        .option-btn.selected {
+            background-color: #3b82f6; /* blue-500 */
+            color: white;
+            transform: scale(1.02);
+        }
+        .option-btn.correct {
+            background-color: #22c55e !important; /* green-500 */
+            color: white !important;
+            border-color: #16a34a !important;
+        }
+        .option-btn.incorrect {
+            background-color: #ef4444 !important; /* red-500 */
+            color: white !important;
+            border-color: #dc2626 !important;
+        }
+        .option-btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.9;
+        }
+        /* Custom animation for fade-in */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+        /* Loading spinner */
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .spinner {
+            display: inline-block;
+            width: 24px;
+            height: 24px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        .explanation-box {
+            background-color: #f3f4f6; /* gray-100 */
+            border-left: 4px solid #3b82f6; /* blue-500 */
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 flex items-center justify-center min-h-screen p-4">
+
+    <div id="app-container" class="w-full max-w-2xl bg-white rounded-xl shadow-lg p-6 md:p-8">
+
+        <!-- Initial Upload View -->
+        <div id="upload-view">
+            <div class="text-center">
+                <h1 class="text-3xl font-bold text-gray-900">JSON Quiz Maker</h1>
+                <p class="mt-2 text-gray-600">Upload a JSON file to start a quiz, now with AI-powered explanations!</p>
+            </div>
+
+            <div id="drop-zone" class="mt-6 border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-blue-500 hover:bg-gray-50 transition-colors">
+                <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
+                    <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                <p class="mt-4 text-gray-600">Drag & drop your JSON file here</p>
+                <p class="text-sm text-gray-500">or</p>
+                <button id="browse-btn" type="button" class="mt-2 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    Browse Files
+                </button>
+                <input type="file" id="file-input" class="hidden" accept=".json">
+            </div>
+
+            <div class="mt-6 text-center">
+                <p class="text-sm text-gray-500">Don't have a JSON file?</p>
+                <button id="download-sample-btn" class="text-blue-600 hover:underline font-medium">Download Sample JSON</button>
+            </div>
+            <div id="error-message" class="mt-4 text-red-600 font-medium text-center"></div>
+        </div>
+
+        <!-- Quiz View -->
+        <div id="quiz-view" class="hidden">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold text-gray-900">Quiz in Progress</h2>
+                <div id="progress-indicator" class="text-sm font-medium text-gray-600"></div>
+            </div>
+            <div id="question-container" class="p-6 bg-gray-50 rounded-lg">
+                <p id="question-text" class="text-lg font-semibold mb-6"></p>
+                <div id="options-container" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Options will be dynamically inserted here -->
+                </div>
+                <!-- Gemini Explanation Section -->
+                <div id="explanation-section" class="mt-6 hidden">
+                    <button id="explain-btn" class="inline-flex items-center justify-center w-full px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        <span id="explain-btn-text">✨ Explain Answer</span>
+                        <div id="explain-spinner" class="spinner hidden"></div>
+                    </button>
+                    <div id="explanation-text-container" class="explanation-box p-4 mt-4 rounded-md hidden"></div>
+                </div>
+            </div>
+            <div class="mt-6 flex justify-end">
+                <button id="next-btn" class="px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">Next</button>
+            </div>
+        </div>
+
+        <!-- Results View -->
+        <div id="results-view" class="hidden text-center">
+            <h2 class="text-3xl font-bold text-gray-900">Quiz Complete!</h2>
+            <div class="mt-4 p-6 bg-blue-50 rounded-lg">
+                <p class="text-lg text-gray-700">Your Score:</p>
+                <p id="score-text" class="text-5xl font-extrabold text-blue-600 my-2"></p>
+                <p id="score-percentage" class="text-lg font-medium text-gray-700"></p>
+            </div>
+            
+            <div id="results-summary" class="mt-8 text-left">
+                <h3 class="text-xl font-bold mb-4">Review Your Answers:</h3>
+                <!-- Detailed results will be injected here -->
+            </div>
+
+            <div class="mt-8 flex flex-col sm:flex-row justify-center gap-4">
+                <button id="restart-btn" class="w-full sm:w-auto px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700">Try Again</button>
+                <button id="new-quiz-btn" class="w-full sm:w-auto px-6 py-3 border border-gray-300 text-base font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50">Load New Quiz</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const appContainer = document.getElementById('app-container');
+        const uploadView = document.getElementById('upload-view');
+        const quizView = document.getElementById('quiz-view');
+        const resultsView = document.getElementById('results-view');
+        const dropZone = document.getElementById('drop-zone');
+        const browseBtn = document.getElementById('browse-btn');
+        const fileInput = document.getElementById('file-input');
+        const errorMessage = document.getElementById('error-message');
+        const downloadSampleBtn = document.getElementById('download-sample-btn');
+        
+        const progressIndicator = document.getElementById('progress-indicator');
+        const questionText = document.getElementById('question-text');
+        const optionsContainer = document.getElementById('options-container');
+        const nextBtn = document.getElementById('next-btn');
+
+        const explanationSection = document.getElementById('explanation-section');
+        const explainBtn = document.getElementById('explain-btn');
+        const explainBtnText = document.getElementById('explain-btn-text');
+        const explainSpinner = document.getElementById('explain-spinner');
+        const explanationTextContainer = document.getElementById('explanation-text-container');
+
+        const scoreText = document.getElementById('score-text');
+        const scorePercentage = document.getElementById('score-percentage');
+        const resultsSummary = document.getElementById('results-summary');
+        const restartBtn = document.getElementById('restart-btn');
+        const newQuizBtn = document.getElementById('new-quiz-btn');
+
+        // App State
+        let quizData = [];
+        let currentQuestionIndex = 0;
+        let userAnswers = [];
+        let score = 0;
+
+        // --- FILE HANDLING AND VALIDATION ---
+        function handleFileSelect(file) {
+            if (!file || !file.type.match('application/json')) {
+                displayError('Please upload a valid JSON file.');
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const json = JSON.parse(e.target.result);
+                    if (!isValidQuizData(json)) {
+                        displayError('Invalid JSON structure. Please check the sample format.');
+                        return;
+                    }
+                    quizData = json;
+                    userAnswers = new Array(quizData.length).fill(null);
+                    startQuiz();
+                } catch (err) {
+                    displayError('Error parsing JSON file. Make sure it is correctly formatted.');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function isValidQuizData(data) {
+            if (!Array.isArray(data) || data.length === 0) return false;
+            return data.every(item => 
+                item &&
+                typeof item.question === 'string' &&
+                Array.isArray(item.options) &&
+                item.options.length > 1 &&
+                typeof item.answer === 'string' &&
+                item.options.includes(item.answer)
+            );
+        }
+        
+        function displayError(message) {
+            errorMessage.textContent = message;
+            setTimeout(() => errorMessage.textContent = '', 5000);
+        }
+
+        // --- QUIZ LOGIC ---
+        function startQuiz() {
+            currentQuestionIndex = 0;
+            score = 0;
+            uploadView.classList.add('hidden');
+            resultsView.classList.add('hidden');
+            quizView.classList.remove('hidden');
+            appContainer.classList.add('fade-in');
+            loadQuestion();
+        }
+
+        function loadQuestion() {
+            // Clear previous question state
+            optionsContainer.innerHTML = '';
+            explanationSection.classList.add('hidden');
+            explanationTextContainer.classList.add('hidden');
+            explanationTextContainer.textContent = '';
+            explainBtn.disabled = false;
+            
+            appContainer.classList.remove('fade-in');
+            void appContainer.offsetWidth; // Trigger reflow
+            appContainer.classList.add('fade-in');
+
+            const question = quizData[currentQuestionIndex];
+            progressIndicator.textContent = `Question ${currentQuestionIndex + 1} of ${quizData.length}`;
+            questionText.textContent = question.question;
+
+            question.options.forEach(option => {
+                const button = document.createElement('button');
+                button.textContent = option;
+                button.classList.add('option-btn', 'w-full', 'p-4', 'text-left', 'bg-white', 'border', 'border-gray-300', 'rounded-lg', 'hover:bg-gray-100', 'focus:outline-none', 'focus:ring-2', 'focus:ring-offset-2', 'focus:ring-blue-400');
+                button.addEventListener('click', () => selectOption(button, option));
+                optionsContainer.appendChild(button);
+            });
+            
+            nextBtn.textContent = (currentQuestionIndex === quizData.length - 1) ? 'Submit Quiz' : 'Next';
+        }
+
+        function selectOption(selectedButton, option) {
+            userAnswers[currentQuestionIndex] = option;
+            const correctAnswer = quizData[currentQuestionIndex].answer;
+            const allOptionButtons = optionsContainer.querySelectorAll('.option-btn');
+
+            allOptionButtons.forEach(btn => btn.disabled = true);
+
+            allOptionButtons.forEach(btn => {
+                const btnOption = btn.textContent;
+                if (btnOption === correctAnswer) {
+                    btn.classList.add('correct');
+                } else if (btnOption === option) {
+                    btn.classList.add('incorrect');
+                }
+            });
+
+            // Show the explanation button
+            explanationSection.classList.remove('hidden');
+        }
+
+        function handleNext() {
+            if (userAnswers[currentQuestionIndex] === null) {
+                displayError('Please select an answer before proceeding.');
+                return;
+            }
+            if (currentQuestionIndex < quizData.length - 1) {
+                currentQuestionIndex++;
+                loadQuestion();
+            } else {
+                showResults();
+            }
+        }
+
+        // --- GEMINI API INTEGRATION ---
+  async function getExplanation() {
+            const questionData = quizData[currentQuestionIndex];
+            const prompt = `Explain why "${questionData.answer}" is the correct answer for the question: "${questionData.question}". Keep the explanation concise (2-3 sentences) and easy to understand.`;
+
+            // Show loading state
+            explainBtn.disabled = true;
+            explainBtnText.classList.add('hidden');
+            explainSpinner.classList.remove('hidden');
+            explanationTextContainer.classList.add('hidden');
+
+            try {
+                // The URL now points to our own serverless function endpoint
+                const apiUrl = 'http://localhost:3001/api/explain'; 
+                
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    // We only need to send the prompt now
+                    body: JSON.stringify({ prompt: prompt }) 
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API request failed with status ${response.status}`);
+                }
+
+                const result = await response.json();
+                
+                if (result.candidates && result.candidates.length > 0 &&
+                    result.candidates[0].content && result.candidates[0].content.parts &&
+                    result.candidates[0].content.parts.length > 0) {
+                    const text = result.candidates[0].content.parts[0].text;
+                    explanationTextContainer.textContent = text;
+                } else {
+                    explanationTextContainer.textContent = 'Could not get an explanation at this time. Please try again.';
+                }
+            } catch (error) {
+                console.error("Error fetching explanation:", error);
+                explanationTextContainer.textContent = 'An error occurred while fetching the explanation.';
+            } finally {
+                // Hide loading state and show explanation
+                explainBtnText.classList.remove('hidden');
+                explainSpinner.classList.add('hidden');
+                explanationTextContainer.classList.remove('hidden');
+            }
+        }
+
+        // --- RESULTS LOGIC ---
+        function showResults() {
+            score = 0;
+            quizData.forEach((question, index) => {
+                if (userAnswers[index] === question.answer) {
+                    score++;
+                }
+            });
+
+            scoreText.textContent = `${score} / ${quizData.length}`;
+            const percentage = Math.round((score / quizData.length) * 100);
+            scorePercentage.textContent = `That's ${percentage}%!`;
+
+            resultsSummary.innerHTML = '<h3 class="text-xl font-bold mb-4">Review Your Answers:</h3>';
+            quizData.forEach((question, index) => {
+                const isCorrect = userAnswers[index] === question.answer;
+                const resultItem = document.createElement('div');
+                resultItem.classList.add('mb-6', 'p-4', 'rounded-lg', isCorrect ? 'bg-green-50' : 'bg-red-50');
+                
+                resultItem.innerHTML = `
+                    <p class="font-semibold">${index + 1}. ${question.question}</p>
+                    <div class="mt-3 space-y-2">
+                        ${question.options.map(option => {
+                            let classes = 'option-btn p-3 rounded-md text-left w-full ';
+                            const isSelected = userAnswers[index] === option;
+                            const isAnswer = question.answer === option;
+
+                            if (isAnswer) classes += 'correct';
+                            else if (isSelected && !isCorrect) classes += 'incorrect';
+                            else classes += 'bg-gray-200 text-gray-700';
+                            
+                            return `<button disabled class="${classes}">${option}</button>`;
+                        }).join('')}
+                    </div>
+                    ${!isCorrect && userAnswers[index] !== null ? `<p class="mt-2 text-sm font-medium text-green-700">Correct answer: ${question.answer}</p>` : ''}
+                `;
+                resultsSummary.appendChild(resultItem);
+            });
+
+            quizView.classList.add('hidden');
+            resultsView.classList.remove('hidden');
+            appContainer.classList.add('fade-in');
+        }
+        
+        function resetQuiz() {
+            resultsView.classList.add('hidden');
+            startQuiz();
+        }
+
+        function loadNewQuiz() {
+            quizData = [];
+            currentQuestionIndex = 0;
+            userAnswers = [];
+            score = 0;
+            fileInput.value = '';
+            
+            resultsView.classList.add('hidden');
+            uploadView.classList.remove('hidden');
+            appContainer.classList.add('fade-in');
+        }
+
+        // --- EVENT LISTENERS ---
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('border-blue-500', 'bg-gray-50'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('border-blue-500', 'bg-gray-50'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-blue-500', 'bg-gray-50');
+            handleFileSelect(e.dataTransfer.files[0]);
+        });
+        
+        browseBtn.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', (e) => handleFileSelect(e.target.files[0]));
+        
+        nextBtn.addEventListener('click', handleNext);
+        restartBtn.addEventListener('click', resetQuiz);
+        newQuizBtn.addEventListener('click', loadNewQuiz);
+        explainBtn.addEventListener('click', getExplanation);
+
+        downloadSampleBtn.addEventListener('click', () => {
+            const sampleData = [
+                { "question": "What is the capital of France?", "options": ["Berlin", "Madrid", "Paris", "Rome"], "answer": "Paris" },
+                { "question": "Which element has the atomic number 1?", "options": ["Helium", "Oxygen", "Hydrogen", "Lithium"], "answer": "Hydrogen"},
+                { "question": "Who wrote 'To Kill a Mockingbird'?", "options": ["Harper Lee", "J.K. Rowling", "Ernest Hemingway", "Mark Twain"], "answer": "Harper Lee"}
+            ];
+            const jsonString = JSON.stringify(sampleData, null, 2);
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'quiz_sample.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+    </script>
+</body>
+</html>
